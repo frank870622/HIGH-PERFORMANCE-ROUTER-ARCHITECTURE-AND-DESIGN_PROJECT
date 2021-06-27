@@ -1,0 +1,10 @@
+home/google
+home/amazon
+home/facebook
+home/google/mail
+home/google/map
+com/google
+com/amazon
+com/facebook
+com/google/mail
+com/google/map

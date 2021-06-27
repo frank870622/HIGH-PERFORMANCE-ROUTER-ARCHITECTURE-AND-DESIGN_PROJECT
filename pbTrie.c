@@ -21,7 +21,7 @@ unsigned int BKDRHash(const char* str, unsigned int len)
 
 //////////////////////
 // bitmap
-int get_bitmap_index(const char* str, unsigned int string_len, int bitmap_size){
+int get_hash_value(const char* str, unsigned int string_len, int bitmap_size){
     unsigned int hash_value = BKDRHash(str, strlen(str));
     int index_of_bitmap = hash_value % bitmap_size;
 
@@ -54,6 +54,10 @@ int get_pow_value_of_2(int branch_number){
 
 //////////////////////
 PBTrie_node * pbTrie_root;
+PBC_cache * PBC_cache_head;
+Hash_Table ** hash_table;
+int now_cache_number = 0;
+
 
 PBTrie_node * create_pbTrie_node(){
     PBTrie_node * new_node = (PBTrie_node *)malloc(sizeof(PBTrie_node));
@@ -84,6 +88,49 @@ Lookup_Table ** create_lookup_table_pointer_array(int array_len){
 
     return new_lookup_table;
 }
+
+FingerPrint * create_fingerprint(){
+    FingerPrint * new_fingerprint = (FingerPrint *)malloc(sizeof(struct FingerPrint));
+    new_fingerprint -> fingerprint_string[0] = 0;
+    new_fingerprint -> next_fingerprint = NULL;
+    return new_fingerprint;
+}
+
+PBC_cache * create_PBC_cache(){
+    PBC_cache * new_PBC_cache = (PBC_cache *)malloc(sizeof(struct PBC_cache));
+    new_PBC_cache -> cache_fingerprint = NULL;
+    new_PBC_cache -> rule_id = 0;
+    new_PBC_cache -> fingerprint_len = 0;
+    new_PBC_cache -> pbTrie_pointer = NULL;
+    new_PBC_cache -> pre_PBC_cahce = NULL;
+    new_PBC_cache -> down_PBC_cache = NULL;
+    return new_PBC_cache;
+}
+
+Hash_Table * create_hash_table(){
+    Hash_Table * new_hash_table = (Hash_Table *)malloc(sizeof(struct Hash_Table));
+    new_hash_table -> cache_pointer = NULL;
+    new_hash_table -> down_hash_table = NULL;
+    return new_hash_table;
+}
+
+void init_PBC_cache_header(){
+    PBC_cache_head = (PBC_cache *)malloc(sizeof(struct PBC_cache));
+    PBC_cache_head -> cache_fingerprint = NULL;
+    PBC_cache_head -> rule_id = 0;
+    PBC_cache_head -> fingerprint_len = 0;
+    PBC_cache_head -> pbTrie_pointer = NULL;
+    PBC_cache_head -> pre_PBC_cahce = NULL;
+    PBC_cache_head -> down_PBC_cache = NULL;
+}
+
+void init_hash_table(){
+    hash_table = (Hash_Table **)malloc(HASH_TABLE_SIZE * sizeof(struct Hash_Table * ));
+    for(int i = 0; i < HASH_TABLE_SIZE; ++i){
+        hash_table[i] = NULL;
+    }
+}
+
 
 void print_pbTrie_node_information(PBTrie_node * input_node){
     if (input_node == NULL) printf("in \"print_pbTrie_node_information\", MSG : pbTrie node is NULL\n");
@@ -162,7 +209,7 @@ PBTrie_node * check_branch_exist(PBTrie_node * now_node, char* input_string){
     else {
         //maybe branch exist
         //printf("in \"check_branch_exist\", MSG : bitmap_size: %d\n", now_node -> bitmap_size);
-        int index_of_bitmap = get_bitmap_index(input_string, strlen(input_string), now_node -> bitmap_size);
+        int index_of_bitmap = get_hash_value(input_string, strlen(input_string), now_node -> bitmap_size);
         //printf("in \"check_branch_exist\", MSG : get index of bitmap: %d\n", index_of_bitmap);
         if (now_node -> bitmap[index_of_bitmap] == 0){
             // branch not exist
@@ -233,7 +280,7 @@ void move_old_lookup_table_to_new_lookup_table(PBTrie_node * new_node, Lookup_Ta
             //get new bitmap index of this old lookup_table's pbTrie node in the new pbTrie node
             printf("in \"move_old_lookup_table_to_new_lookup_table_and_update_bitmap\", MSG : move name: %s\n", temp_old_lookup_table -> pbTrie_node -> node_name);
 
-            int bitmap_index = get_bitmap_index(temp_old_lookup_table -> pbTrie_node -> node_name, strlen(temp_old_lookup_table -> pbTrie_node -> node_name), new_node -> bitmap_size);
+            int bitmap_index = get_hash_value(temp_old_lookup_table -> pbTrie_node -> node_name, strlen(temp_old_lookup_table -> pbTrie_node -> node_name), new_node -> bitmap_size);
             printf("in \"move_old_lookup_table_to_new_lookup_table_and_update_bitmap\", MSG : new bitmap index : %d\n", bitmap_index);
 
             //get new lookup_table index
@@ -295,7 +342,7 @@ void update_old_bitmap_to_new_bitmap(PBTrie_node * new_node, Lookup_Table ** old
             if (temp_old_lookup_table -> pbTrie_node != NULL){
 
                 //get new bitmap index
-                int bitmap_index = get_bitmap_index(temp_old_lookup_table -> pbTrie_node -> node_name, strlen(temp_old_lookup_table -> pbTrie_node -> node_name), new_node -> bitmap_size);
+                int bitmap_index = get_hash_value(temp_old_lookup_table -> pbTrie_node -> node_name, strlen(temp_old_lookup_table -> pbTrie_node -> node_name), new_node -> bitmap_size);
                 //update bitmap
                 new_node->bitmap[bitmap_index] = 1;
             }
@@ -360,7 +407,7 @@ PBTrie_node * insert_pbTrie_node(char* read_string, PBTrie_node * now_node){
             
             
             //get bitmap index
-            int bitmap_index =  get_bitmap_index(input_string, strlen(input_string), temp_node -> bitmap_size);
+            int bitmap_index =  get_hash_value(input_string, strlen(input_string), temp_node -> bitmap_size);
             printf("in \"insert_pbTrie_node\", MSG : get bitmap index : %d\n", bitmap_index);
             //upadte bitmap of new branch
             temp_node->bitmap[bitmap_index] = 1;
@@ -443,7 +490,6 @@ void read_file_and_build_pbTrie(char * file_name){
     while(fgets(buf,500,fptr)!=NULL){
         strtok_string = strtok(buf, tok);
         PBTrie_node * next_pbTrie_node = pbTrie_root;
-        // check return pbTrie node is null or not
         while(strtok_string != NULL){
             //printf("%s", strtok_string);
             PBTrie_node * temp_pbTrie_node = insert_pbTrie_node(strtok_string, next_pbTrie_node);
@@ -595,7 +641,7 @@ void update_bitmap(PBTrie_node* now_node, int old_lookup_table_pointer_array_siz
         for(int i = 0; i < old_lookup_table_pointer_array_size; ++i){
             if(now_node -> lookup_table[i] != NULL){
                 //update bitmap
-                int bitmap_index = get_bitmap_index(now_node -> lookup_table[i] -> pbTrie_node -> node_name, strlen(now_node -> lookup_table[i] -> pbTrie_node -> node_name), now_node -> bitmap_size);
+                int bitmap_index = get_hash_value(now_node -> lookup_table[i] -> pbTrie_node -> node_name, strlen(now_node -> lookup_table[i] -> pbTrie_node -> node_name), now_node -> bitmap_size);
                 now_node -> bitmap[bitmap_index] = 1;
             }
         }
@@ -613,7 +659,7 @@ void recursively_delete_self_and_father_node(PBTrie_node * now_node){
 
         //remember father's old branch counter
 
-        int father_bitmap_index = get_bitmap_index(temp_node -> node_name, strlen(temp_node -> node_name), father_node -> bitmap_size);
+        int father_bitmap_index = get_hash_value(temp_node -> node_name, strlen(temp_node -> node_name), father_node -> bitmap_size);
         
         //check father's bitmap size
         if (father_node -> bitmap_size == 0){
@@ -642,19 +688,19 @@ void recursively_delete_self_and_father_node(PBTrie_node * now_node){
                     //need_to_free_lookup_table is not at the first entry of a lookup_table pointer array
                     //need to lookup lookup_table link list
                     else{
-                        Lookup_Table * prew_lookup_table = father_node -> lookup_table[father_lookup_table_index];
-                        Lookup_Table * temp_lookup_table = prew_lookup_table -> down_lookup_table;
+                        Lookup_Table * prev_lookup_table = father_node -> lookup_table[father_lookup_table_index];
+                        Lookup_Table * temp_lookup_table = prev_lookup_table -> down_lookup_table;
 
                         while(temp_lookup_table != NULL){
                             if(temp_lookup_table -> pbTrie_node !=NULL){
                                 if(strcmp(temp_node -> node_name, temp_lookup_table -> pbTrie_node -> node_name) == 0){
-                                    prew_lookup_table -> down_lookup_table = temp_lookup_table -> down_lookup_table;
+                                    prev_lookup_table -> down_lookup_table = temp_lookup_table -> down_lookup_table;
                                     free(temp_lookup_table);
                                     father_node -> branch_couter -= 1;
                                     break;
                                 }
 
-                                prew_lookup_table = temp_lookup_table;
+                                prev_lookup_table = temp_lookup_table;
                                 temp_lookup_table = temp_lookup_table -> down_lookup_table;
                             }
                             else{
@@ -766,27 +812,813 @@ void read_file_and_delete_pbTrie(char * file_name){
     fclose(fptr);
 }
 
+void insert_fingerprint(FingerPrint * now_fingerprint, char * input_fingerprint){
+    if ( now_fingerprint == NULL){
+        printf("in \"now_fingerprint\", ERR : fingerprint is NULL\n");
+        return;
+    }
+    else{
+        FingerPrint * temp_fingerprint = now_fingerprint;
+
+        while(temp_fingerprint -> fingerprint_string[0] != 0){
+            if(temp_fingerprint -> next_fingerprint == NULL){
+                //malloc a new fingerprint 
+                temp_fingerprint -> next_fingerprint = create_fingerprint();
+                temp_fingerprint = temp_fingerprint -> next_fingerprint;
+            }
+            else{
+                //move to next fingerprint
+                temp_fingerprint = temp_fingerprint -> next_fingerprint;
+            }
+        }
+        strcpy(temp_fingerprint -> fingerprint_string, input_fingerprint);
+
+    }
+}
+
+void print_fingerprint(FingerPrint * now_fingerprint){
+    printf("fingerprint: ");
+    while(now_fingerprint != NULL){
+        printf(" %s ", now_fingerprint -> fingerprint_string);
+        now_fingerprint = now_fingerprint -> next_fingerprint;
+    }
+    printf("\n");
+}
+
+int match_fingerprint(FingerPrint * now_fingerprint, int fingerprint_number, PBC_cache * now_cache){
+    //check fingerprint is null or not 
+    if(now_fingerprint == NULL){
+        printf("in \"match_fingerprint\", ERR : fingerprint is NULL\n");
+        return -1;
+    }
+    //check cache is null or not
+    else if (now_cache == NULL){
+        printf("in \"match_fingerprint\", ERR : now cache is NULL\n");
+        return -1;
+    }
+    else{
+        int match_flag = 1;
+        FingerPrint * temp_cache_fingerprint = now_cache -> cache_fingerprint;
+        
+        if(fingerprint_number > now_cache -> fingerprint_len){
+            //input fingerprint is longer than cache
+            //not match
+            match_flag = 0;
+            return 0;
+        }
+
+        for(int i = fingerprint_number; i > 0; --i){
+            //check fingerprint is same or not
+            if(strcmp(now_fingerprint -> fingerprint_string, temp_cache_fingerprint -> fingerprint_string) == 0);
+            else{
+                //fingerprint is different
+                match_flag = 0;
+                return match_flag;
+            }
+
+            now_fingerprint = now_fingerprint -> next_fingerprint;
+            temp_cache_fingerprint = temp_cache_fingerprint -> next_fingerprint;
+        }
+
+        return match_flag;
+    }
+}
+
+PBC_cache * search_hash_table_index(FingerPrint * now_fingerprint, int fingerprint_number, Hash_Table * now_hash_table){
+    printf("in \"search_hash_table_index\", MSG : fingerprint_number : %d\n", fingerprint_number);
+    
+    //check fingerprint is null or not 
+    if(now_fingerprint == NULL){
+        printf("in \"search_hash_table_index\", ERR : fingerprint is NULL\n");
+        return NULL;
+    }
+    //check hash table is null or not
+    if (now_hash_table == NULL){
+        printf("in \"search_hash_table_index\", ERR : now_hash_table is NULL\n");
+        return NULL;
+    }
+    else{
+        Hash_Table * temp_hash_table = now_hash_table;
+        while(temp_hash_table != NULL){
+            //try to match a cache's fingerprint
+            int match_flag = match_fingerprint(now_fingerprint, fingerprint_number, temp_hash_table -> cache_pointer);
+            if(match_flag == 1){
+                //find cache
+                return temp_hash_table -> cache_pointer;
+            }
+            temp_hash_table = temp_hash_table -> down_hash_table;
+        }
+
+        //not fount any match cache
+        return NULL;
+        
+    }
+}
+
+int get_hash_table_index(FingerPrint * now_fingerprint, int fingerprint_number){
+    int hash_table_index = 0;
+
+    for(int i = 0; i < fingerprint_number; ++i){
+            hash_table_index += get_hash_value(now_fingerprint -> fingerprint_string, strlen(now_fingerprint -> fingerprint_string), HASH_TABLE_SIZE);
+            now_fingerprint = now_fingerprint -> next_fingerprint;
+        }
+    hash_table_index = hash_table_index % HASH_TABLE_SIZE;
+
+    return hash_table_index;
+}
+
+PBC_cache * search_hash_table_with_fingerprint(FingerPrint * now_fingerprint, int fingerprint_number){
+    printf("in \"search_hash_table_with_fingerprint\", MSG : fingerprint_number : %d\n", fingerprint_number);
+    
+    //check fingerprint is null or not 
+    if(now_fingerprint == NULL){
+        printf("in \"search_hash_table_with_fingerprint\", ERR : fingerprint is NULL\n");
+        return NULL;
+    }
+    else{
+        //get hash table index
+        int hash_table_index = get_hash_table_index(now_fingerprint, fingerprint_number);
+        printf("in \"search_hash_table_with_fingerprint\", MSG : hash_table_index : %d\n", hash_table_index);
+
+        //searh hash table
+        PBC_cache * answer_cache = search_hash_table_index(now_fingerprint, fingerprint_number, hash_table[hash_table_index]);
+        printf("in \"search_hash_table_with_fingerprint\", MSG : after search_hash_table_index\n");
+
+        if (answer_cache != NULL){
+            //find a cache
+            return answer_cache;
+        }
+        else{
+            // cache not found
+            return NULL;
+        }
+    }
+}
+
+PBC_cache * get_cache_tail(){
+    PBC_cache * temp_PBC_cache = PBC_cache_head;
+
+    if(temp_PBC_cache == NULL){
+        printf("in \"get_cache_tail\", ERR : cache head is NULL\n");
+        return NULL;
+    }
+    //recursively to get cache tail
+    while(temp_PBC_cache -> down_PBC_cache != NULL){
+        temp_PBC_cache = temp_PBC_cache -> down_PBC_cache;
+    }
+
+    return temp_PBC_cache;
+}
+
+void remove_hash_entry(PBC_cache * now_cache){
+    if(hash_table == NULL){
+        printf("in \"remove_hash_entry\", ERR : hashtable is NULL\n");
+        return;
+    }
+    else if (now_cache == NULL){
+        printf("in \"remove_hash_entry\", ERR : now_cache is NULL\n");
+        return;
+    }
+    else{
+        //get hash table index
+        int hash_table_index = get_hash_table_index(now_cache -> cache_fingerprint, now_cache -> fingerprint_len);
+
+        if(hash_table[hash_table_index] != NULL){
+            if(hash_table[hash_table_index] -> cache_pointer != NULL){
+                //printf("in \"remove_hash_entry\", MSG : hash_table[i] -> cache_pointer -> rule_id : %d\n", hash_table[i] -> cache_pointer -> rule_id);
+                if(now_cache -> rule_id == hash_table[hash_table_index] -> cache_pointer -> rule_id){
+                    //delete hash entry
+                    Hash_Table * removed_hash_table = hash_table[hash_table_index];
+                    hash_table[hash_table_index] = hash_table[hash_table_index] -> down_hash_table;
+                    free(removed_hash_table);
+                    return;
+                }
+            }
+            else{
+                printf("in \"remove_hash_entry\", ERR : cache_pointer is NULL\n");
+                return;
+            }
+
+            Hash_Table * temp_hash_table = hash_table[hash_table_index] -> down_hash_table;
+
+            while(temp_hash_table != NULL){
+                if(temp_hash_table -> cache_pointer != NULL){
+                    if(now_cache -> rule_id == temp_hash_table -> cache_pointer -> rule_id){
+                        //delete hash entry
+                        Hash_Table * removed_hash_table = temp_hash_table;
+                        temp_hash_table = temp_hash_table -> down_hash_table;
+                        free(removed_hash_table);
+                        return;
+                    }
+                }
+                else{
+                    printf("in \"remove_hash_entry\", ERR : cache_pointer is NULL\n");
+                    return;
+                }
+
+                //check down hash entry
+                temp_hash_table = temp_hash_table -> down_hash_table;
+            }
+        }
+        
+    }
+
+    //printf("in \"remove_hash_entry\", MSG : rule_id : %d\n", rule_id);
+
+    
+}
+
+void free_fingerprint_recursively(FingerPrint * now_fingerprint){
+    if(now_fingerprint != NULL){
+        free_fingerprint_recursively(now_fingerprint -> next_fingerprint);
+    }
+
+    free(now_fingerprint);
+}
+
+void cut_fingerprint(FingerPrint * now_fingerprint, int fingerprint_count){
+    if(now_fingerprint == NULL){
+        printf("in \"cut_fingerprint\", ERR : now_fingerprint is NULL\n");
+        return;
+    }
+    else{
+        //cut fingerprint at fingerprint_count
+        FingerPrint * temp_fingerprint = now_fingerprint;
+        FingerPrint * pre_fingerprint = NULL;
+
+        for(int i = 0; i < fingerprint_count; ++i){
+            pre_fingerprint = temp_fingerprint;
+            temp_fingerprint = temp_fingerprint -> next_fingerprint;
+        }
+
+        //cut fingerprint
+        pre_fingerprint -> next_fingerprint = NULL;
+        free_fingerprint_recursively(temp_fingerprint);
+
+    }
+}
+
+void insert_to_hash_table(PBC_cache * new_cache, int hash_table_index){
+    if(new_cache == NULL){
+        printf("in \"insert_to_hash_table\", ERR : new_cache is NULL\n");
+        return;
+    }
+    else{
+        if(hash_table[hash_table_index] == NULL){
+            hash_table[hash_table_index] = create_hash_table();
+            hash_table[hash_table_index] -> cache_pointer = new_cache;
+            return;
+        }
+        else{
+            Hash_Table * new_hash_table = create_hash_table();
+            new_hash_table -> cache_pointer = new_cache;
+            new_hash_table -> down_hash_table = hash_table[hash_table_index];
+            hash_table[hash_table_index] = new_hash_table;
+            return;
+        }
+    }
+}
+
+int PBC_search(FingerPrint * now_fingerprint, int fingerprint_number){
+    printf("in \"PBC_search\", MSG : fingerprint_number : %d\n", fingerprint_number);
+    //check fingerprint is null or not 
+    if(now_fingerprint == NULL){
+        printf("in \"PBC_search\", ERR : fingerprint is NULL\n");
+        return -1;
+    }
+    else{
+        //match fingerprint from long to short
+        int cache_fingerprint_num = 0;
+        PBC_cache * answer_cache = NULL;
+        for (int i = fingerprint_number; i > 0; i--)
+        {
+            //search hash with fingerprint
+            answer_cache = search_hash_table_with_fingerprint(now_fingerprint, i);
+
+            if(answer_cache != NULL){
+                cache_fingerprint_num = i;
+                break;
+            }
+        }
+
+        printf("in \"PBC_search\", MSG : cache_fingerprint_num : %d\n", cache_fingerprint_num);
+
+        if(answer_cache != NULL){
+            //it mean we fine a cache in all cache
+            printf("in \"PBC_search\", MSG : we fine a cache in all cache\n");
+
+            //check leaf flag
+            if(answer_cache -> pbTrie_pointer -> branch_couter <= 0){
+                //is leaf node, just return rule id
+                return answer_cache -> rule_id;
+            }
+            else;
+            //check fingerprint len
+            if(fingerprint_number == cache_fingerprint_num){
+                //is longer match prefix , just retrun rule id
+                return answer_cache -> rule_id;
+            }
+            else;
+
+            //check bitmap
+            FingerPrint * temp_fingerprint = now_fingerprint;
+            //get next finger print
+            for(int i = 0; i < fingerprint_number; ++i){
+                temp_fingerprint = temp_fingerprint -> next_fingerprint;
+
+                if(temp_fingerprint == NULL){
+                    printf("in \"PBC_search\", ERR : next fingerprint is NULL\n");
+                }
+            }
+            int bitmap_index = get_hash_value(temp_fingerprint -> fingerprint_string, strlen(temp_fingerprint -> fingerprint_string), answer_cache -> pbTrie_pointer -> bitmap_size);
+
+            if(answer_cache -> pbTrie_pointer -> bitmap[bitmap_index] == 0){
+                //longest prefix match, return rule id 
+                return answer_cache -> rule_id;
+            }
+
+            //sear pbTrie node from immediate node
+            int answer_rule_id = answer_cache -> rule_id;
+            PBTrie_node * temp_pbTrie_node = answer_cache -> pbTrie_pointer;
+            while(temp_fingerprint != NULL){
+                PBTrie_node * next_pbTrie_node = search_pbTrie_node(temp_fingerprint -> fingerprint_string, temp_pbTrie_node);
+                temp_pbTrie_node = next_pbTrie_node;
+
+                if(temp_pbTrie_node != NULL){
+                    //return node is not NULL,  check if prefix node or not
+                    int check_prefix_node_return = check_prefix_node(temp_pbTrie_node);
+                    if(check_prefix_node_return > 0){
+                        //is prefix node, update return_rule_id
+                        answer_rule_id = check_prefix_node_return;
+                    }
+                }
+                temp_fingerprint = temp_fingerprint -> next_fingerprint;
+            }
+
+            //free fingerprint
+            free_fingerprint_recursively(now_fingerprint);
+
+            //return rule id
+            return answer_rule_id;
+        }
+        else{
+            printf("in \"PBC_search\", MSG : not in the cache, search from pbTrei root, need to insert to cache\n");
+            //not in the cache, search from pbTrei root, need to insert to cache 
+            FingerPrint * temp_fingerprint = now_fingerprint;
+            int answer_rule_id = 0;
+            int fingerprint_temp_count = 0;
+            int fingerprint_final_count = 0;
+            PBTrie_node * next_pbTrie_node = pbTrie_root;
+            PBTrie_node * longest_prefix_node = NULL;
+            // check return pbTrie node is null or not
+            while(temp_fingerprint != NULL){
+                PBTrie_node * temp_pbTrie_node = search_pbTrie_node(temp_fingerprint -> fingerprint_string, next_pbTrie_node);
+                next_pbTrie_node = temp_pbTrie_node;
+
+                if(temp_pbTrie_node != NULL){
+                    ++fingerprint_temp_count;
+
+                    //return node is not NULL,  check if prefix node or not
+                    int check_prefix_node_return = check_prefix_node(temp_pbTrie_node);
+                    if(check_prefix_node_return > 0){
+                        //is prefix node, update answer_rule_id
+                        answer_rule_id = check_prefix_node_return;
+                        longest_prefix_node = temp_pbTrie_node;
+                        //update fingerprint final count
+                        fingerprint_final_count = fingerprint_temp_count;
+                    }
+                }
+            
+                temp_fingerprint = temp_fingerprint -> next_fingerprint;
+            }
+
+            printf("in \"PBC_search\", MSG : answer_rule_id : %d\n", answer_rule_id);
+
+            if (answer_rule_id != 0){
+                //it mean we get prefix
+                //insert to cache
+
+                //check cache num is full or not
+                printf("in \"PBC_search\", MSG : now_cache_number : %d\n", now_cache_number);
+                if(now_cache_number >= MAX_CACHE_NUM){
+                    //delete tail cache or not;
+
+                    //get cache tail
+                    PBC_cache * cache_tail = get_cache_tail();
+                    if(cache_tail == NULL){
+                        printf("in \"PBC_search\", ERR : next cache tail is NULL\n");
+                    }
+
+                    //delete the hash entry of this cache
+                    remove_hash_entry(cache_tail);
+                    
+
+                    //check tail is head or not
+                    if(cache_tail -> pre_PBC_cahce == NULL){
+                        //clean tail
+                        //free fingerprint
+                        free_fingerprint_recursively(cache_tail -> cache_fingerprint);
+                        cache_tail -> cache_fingerprint = NULL;
+                        cache_tail -> rule_id = 0;
+                        cache_tail -> pbTrie_pointer = NULL;
+                        cache_tail -> pre_PBC_cahce = NULL;
+                        cache_tail -> down_PBC_cache = NULL;
+                    }
+                    else{
+                        //delete tail
+                        //free fingerprint
+                        free_fingerprint_recursively(cache_tail -> cache_fingerprint);
+                        cache_tail -> pre_PBC_cahce -> down_PBC_cache = NULL;
+                        free(cache_tail);
+                    }
+                    --now_cache_number;
+                }
+                else;
+
+                //insert to cache
+                PBC_cache * new_PBC_cache = NULL;
+                if(now_cache_number == 0){
+                    //update head
+                    new_PBC_cache = PBC_cache_head;
+
+                    new_PBC_cache -> rule_id = longest_prefix_node -> rule_id;
+                    new_PBC_cache -> fingerprint_len = fingerprint_final_count;
+                    new_PBC_cache -> pbTrie_pointer = longest_prefix_node;
+
+                    //copy fingerprint
+                    cut_fingerprint(now_fingerprint, fingerprint_final_count);
+                    new_PBC_cache -> cache_fingerprint = now_fingerprint;
+
+                    int hash_table_index = get_hash_table_index(now_fingerprint, fingerprint_final_count);
+                    insert_to_hash_table(new_PBC_cache, hash_table_index);
+                }
+                else{
+                    //create new cache
+                    PBC_cache * new_PBC_cache = create_PBC_cache();
+
+                    new_PBC_cache -> rule_id = longest_prefix_node -> rule_id;
+                    new_PBC_cache -> fingerprint_len = fingerprint_final_count;
+                    new_PBC_cache -> pbTrie_pointer = longest_prefix_node;
+
+                    
+                    //connect cache
+                    new_PBC_cache -> down_PBC_cache = PBC_cache_head;
+                    PBC_cache_head -> pre_PBC_cahce = new_PBC_cache;
+                    PBC_cache_head = new_PBC_cache;
+
+                    //copy fingerprint
+                    cut_fingerprint(now_fingerprint, fingerprint_final_count);
+                    new_PBC_cache -> cache_fingerprint = now_fingerprint;
+
+                    int hash_table_index = get_hash_table_index(now_fingerprint, fingerprint_final_count);
+                    insert_to_hash_table(new_PBC_cache, hash_table_index);
+                }
+            
+
+                ++now_cache_number;
+
+            }
+            //retrun rule id
+            return answer_rule_id;
+        }
+        
+    }
+}
+
+void read_file_and_search_with_cache(char * file_name){
+    printf("in \"read_file_and_build_pbTrie\", MEG : read_file : %s\n", file_name);
+    char buf[500];
+    char* strtok_string;
+
+    FILE *fptr;
+    fptr = fopen(file_name, "r");   
+
+    int search_count = 0;
+
+    char tok[] = "/";
+    while(fgets(buf,500,fptr)!=NULL){
+        strtok_string = strtok(buf, tok);
+        FingerPrint * new_fingerprint = create_fingerprint();
+        int fingerprint_number = 0;
+        // check return pbTrie node is null or not
+        while(strtok_string != NULL){
+            //printf("%s", strtok_string);
+            insert_fingerprint(new_fingerprint, strtok_string);
+            ++fingerprint_number;
+            strtok_string = strtok(NULL, tok);
+
+        }
+        print_fingerprint(new_fingerprint);
+
+        //search cache
+        int answer_rule_id = PBC_search(new_fingerprint, fingerprint_number);
+        printf("number of '%d' search answer's rule id : %d\n", ++search_count, answer_rule_id);
+    }
+    
+    //close file
+    fclose(fptr);
+}
+
+void PBC_insert(FingerPrint * now_fingerprint, int fingerprint_number, int rule_id){
+    printf("in \"PBC_insert\", MSG : fingerprint_number : %d\n", fingerprint_number);
+    //check fingerprint is null or not 
+    if(now_fingerprint == NULL){
+        printf("in \"PBC_insert\", ERR : fingerprint is NULL\n");
+        return;
+    }
+    else{
+        //match fingerprint from long to short
+        int cache_fingerprint_num = 0;
+        PBC_cache * answer_cache = NULL;
+        for (int i = fingerprint_number; i > 0; i--)
+        {
+            //search hash with fingerprint
+            answer_cache = search_hash_table_with_fingerprint(now_fingerprint, i);
+
+            if(answer_cache != NULL){
+                cache_fingerprint_num = i;
+                break;
+            }
+        }
+
+        printf("in \"PBC_insert\", MSG : cache_fingerprint_num : %d\n", cache_fingerprint_num);
+
+        if(answer_cache != NULL){
+            //we find cache in cache list
+            printf("in \"PBC_insert\", MSG : we find cache in cache list\n");
+            PBTrie_node * next_pbTrie_node = answer_cache -> pbTrie_pointer;
+            if(next_pbTrie_node == NULL){
+                printf("in \"PBC_insert\", ERR : pbTrie_pointer is NULL\n");
+            }
+
+            //move to the fingerprint need to insert
+            FingerPrint * temp_fingerprint = now_fingerprint;
+            for(int i = 0; i < cache_fingerprint_num; ++i){
+                temp_fingerprint = temp_fingerprint -> next_fingerprint;
+            }
+
+            //insert the fingerprint to the cache's pbTrie node
+            while(temp_fingerprint != NULL){
+                //printf("%s", strtok_string);
+                PBTrie_node * temp_pbTrie_node = insert_pbTrie_node(temp_fingerprint -> fingerprint_string, next_pbTrie_node);
+                next_pbTrie_node = temp_pbTrie_node;
+                temp_fingerprint = temp_fingerprint -> next_fingerprint;
+
+                if(temp_fingerprint == NULL){
+                    //this is the end of this prefix, change the rule id
+                    change_rule_id(temp_pbTrie_node, rule_id);
+                }
+            }
+
+            //free fingerprint
+            free_fingerprint_recursively(now_fingerprint);
+        }
+        else{
+            printf("in \"PBC_insert\", MSG : not fount cache, insert from root\n");
+            //not fount cache, insert from root
+            FingerPrint * temp_fingerprint = now_fingerprint;
+
+            PBTrie_node * next_pbTrie_node = pbTrie_root;
+
+
+            //insert the fingerprint to the pbTrie root
+            while(temp_fingerprint != NULL){
+                //printf("%s", strtok_string);
+                PBTrie_node * temp_pbTrie_node = insert_pbTrie_node(temp_fingerprint -> fingerprint_string, next_pbTrie_node);
+                next_pbTrie_node = temp_pbTrie_node;
+                temp_fingerprint = temp_fingerprint -> next_fingerprint;
+
+                if(temp_fingerprint == NULL){
+                    //this is the end of this prefix, change the rule id
+                    change_rule_id(temp_pbTrie_node, rule_id);
+                }
+            }
+
+            //free fingerprint
+            free_fingerprint_recursively(now_fingerprint);
+        }
+    }
+}
+
+void read_file_and_insert_with_cache(char * file_name){
+    printf("in \"read_file_and_insert_with_cache\", MEG : read_file : %s\n", file_name);
+    char buf[500];
+    char* strtok_string;
+
+    FILE *fptr;
+    fptr = fopen(file_name, "r");   
+
+    int insert_count = 0;
+
+    char tok[] = "/";
+    while(fgets(buf,500,fptr)!=NULL){
+        strtok_string = strtok(buf, tok);
+        FingerPrint * new_fingerprint = create_fingerprint();
+        int fingerprint_number = 0;
+        // check return pbTrie node is null or not
+        while(strtok_string != NULL){
+            //printf("%s", strtok_string);
+            insert_fingerprint(new_fingerprint, strtok_string);
+            ++fingerprint_number;
+            strtok_string = strtok(NULL, tok);
+
+        }
+        print_fingerprint(new_fingerprint);
+
+        //search cache
+        PBC_insert(new_fingerprint, fingerprint_number, ++insert_count);
+        printf("number of '%d' insert count\n", insert_count);
+    }
+    
+    //close file
+    fclose(fptr);
+}
+
+void PBC_delete(FingerPrint * now_fingerprint, int fingerprint_number){
+    printf("in \"PBC_delete\", MSG : fingerprint_number : %d\n", fingerprint_number);
+    //check fingerprint is null or not 
+    if(now_fingerprint == NULL){
+        printf("in \"PBC_delete\", ERR : fingerprint is NULL\n");
+        return;
+    }
+    else{
+        //match fingerprint from long to short
+        int cache_fingerprint_num = 0;
+        PBC_cache * answer_cache = NULL;
+        for (int i = fingerprint_number; i > 0; i--)
+        {
+            //search hash with fingerprint
+            answer_cache = search_hash_table_with_fingerprint(now_fingerprint, i);
+
+            if(answer_cache != NULL){
+                cache_fingerprint_num = i;
+                break;
+            }
+        }
+
+        printf("in \"PBC_delete\", MSG : cache_fingerprint_num : %d\n", cache_fingerprint_num);
+
+        if(answer_cache != NULL){
+            //we find cache in cache list
+            printf("in \"PBC_delete\", MSG : we find cache in cache list\n");
+            PBTrie_node * next_pbTrie_node = answer_cache -> pbTrie_pointer;
+            if(next_pbTrie_node == NULL){
+                printf("in \"PBC_insert\", ERR : pbTrie_pointer is NULL\n");
+            }
+
+            //move to the fingerprint need to start delete
+            FingerPrint * temp_fingerprint = now_fingerprint;
+            for(int i = 0; i < cache_fingerprint_num; ++i){
+                temp_fingerprint = temp_fingerprint -> next_fingerprint;
+            }
+
+            //search the delete pbTrie node from fingerprint
+            while(temp_fingerprint != NULL){
+                //printf("%s", strtok_string);
+                PBTrie_node * temp_pbTrie_node = search_pbTrie_node(temp_fingerprint -> fingerprint_string, next_pbTrie_node);
+                next_pbTrie_node = temp_pbTrie_node;
+                temp_fingerprint = temp_fingerprint -> next_fingerprint;
+
+                if(temp_fingerprint == NULL){
+                    //it mean search end
+                    if (temp_pbTrie_node != NULL){
+                        //it mean search prefix is match every fingerprint
+                        delete_pbTrie(temp_pbTrie_node);
+                    }
+                }
+            }
+
+            //if cache is all match the delete pbTrie node, we need to delete hash and cache
+            if(fingerprint_number == cache_fingerprint_num){
+                //delete the hash entry of this cache
+                remove_hash_entry(answer_cache);
+
+                //check tail is head or not
+                if(answer_cache -> pre_PBC_cahce == NULL){
+                    //clean cache
+                    //free fingerprint
+                    free_fingerprint_recursively(answer_cache -> cache_fingerprint);
+                    answer_cache -> cache_fingerprint = NULL;
+                    answer_cache -> rule_id = 0;
+                    answer_cache -> pbTrie_pointer = NULL;
+                    answer_cache -> pre_PBC_cahce = NULL;
+
+                    //connect other cache
+                    if(answer_cache -> down_PBC_cache != NULL){
+                        answer_cache -> down_PBC_cache -> pre_PBC_cahce = NULL;
+                    }
+                }
+                else{
+                    //delete cache
+                    //free fingerprint
+                    free_fingerprint_recursively(answer_cache -> cache_fingerprint);
+
+                    //connect other cache
+                    if(answer_cache -> down_PBC_cache != NULL){
+                        answer_cache -> pre_PBC_cahce -> down_PBC_cache = answer_cache -> down_PBC_cache;
+                        answer_cache -> down_PBC_cache -> pre_PBC_cahce = answer_cache -> pre_PBC_cahce;
+                    }
+                    else{
+                        answer_cache -> pre_PBC_cahce -> down_PBC_cache = NULL;
+                    }
+                    
+                    free(answer_cache);
+                }
+                --now_cache_number;
+            }
+
+            //free fingerprint
+            free_fingerprint_recursively(now_fingerprint);
+        }
+        else{
+            //not found cache, search delete node from root
+            printf("in \"PBC_delete\", MSG : not fount cache, delete from root\n");
+            FingerPrint * temp_fingerprint = now_fingerprint;
+
+            PBTrie_node * next_pbTrie_node = pbTrie_root;
+
+
+            //delete the fingerprint from the pbTrie root
+            while(temp_fingerprint != NULL){
+                //printf("%s", strtok_string);
+                PBTrie_node * temp_pbTrie_node = search_pbTrie_node(temp_fingerprint -> fingerprint_string, next_pbTrie_node);
+                next_pbTrie_node = temp_pbTrie_node;
+                temp_fingerprint = temp_fingerprint -> next_fingerprint;
+
+                if(temp_fingerprint == NULL){
+                    //it mean search end
+                    if (temp_pbTrie_node != NULL){
+                        //it mean search prefix is match every fingerprint
+                        delete_pbTrie(temp_pbTrie_node);
+                    }
+                }
+            }
+
+            //free fingerprint
+            free_fingerprint_recursively(now_fingerprint);
+        }
+    }
+}
+
+void read_file_and_delete_with_cache(char * file_name){
+    printf("in \"read_file_and_delete_with_cache\", MEG : read_file : %s\n", file_name);
+    char buf[500];
+    char* strtok_string;
+
+    FILE *fptr;
+    fptr = fopen(file_name, "r");   
+
+    int delete_count = 0;
+
+    char tok[] = "/";
+    while(fgets(buf,500,fptr)!=NULL){
+        strtok_string = strtok(buf, tok);
+        FingerPrint * new_fingerprint = create_fingerprint();
+        int fingerprint_number = 0;
+        // check return pbTrie node is null or not
+        while(strtok_string != NULL){
+            //printf("%s", strtok_string);
+            insert_fingerprint(new_fingerprint, strtok_string);
+            ++fingerprint_number;
+            strtok_string = strtok(NULL, tok);
+
+        }
+        print_fingerprint(new_fingerprint);
+
+        //search cache
+        PBC_delete(new_fingerprint, fingerprint_number);
+        printf("number of '%d' delete count\n", ++delete_count);
+    }
+    
+    //close file
+    fclose(fptr);
+}
+
 
 int main(int argc, char* argv[]){
     init_pbTrie_root();
+    init_PBC_cache_header();
+    init_hash_table();
 
     if (argc >= 2){
         //build
         read_file_and_build_pbTrie(argv[1]);
-        DFS_print_pbTrie(pbTrie_root);
+        //DFS_print_pbTrie(pbTrie_root);
     }
     if(argc >= 4){
-        //delete
-        read_file_and_delete_pbTrie(argv[3]);
-        DFS_print_pbTrie(pbTrie_root);
+        //update
+        read_file_and_insert_with_cache(argv[3]);
     }
-    if(argc >= 2){
-        //search
-        read_file_and_search_pbTrie(argv[1]);
+    if(argc >= 5){
+        //delete
+        //read_file_and_delete_pbTrie(argv[3]);
+        read_file_and_delete_with_cache(argv[4]);
+        //DFS_print_pbTrie(pbTrie_root);
     }
     if(argc >= 3){
-        //update
-        //read_file_and_build_pbTrie(argv[1]);
+        //search
+        //read_file_and_search_pbTrie(argv[1]);
+        read_file_and_search_with_cache(argv[2]);
     }
     
     
